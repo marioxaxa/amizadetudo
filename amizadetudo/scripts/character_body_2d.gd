@@ -11,6 +11,8 @@ enum Polarity {
 @export var aura_radius := 60.0
 @export var polarity_cooldown := 1.0
 @export var magnetic_strength := 4000.0
+@export var tile_magnetic_radius := 112.0
+@export var tile_magnetic_glue_distance := 54.0
 @export var max_speed := 300.0
 @export var acceleration := 2200.0
 @export var deceleration := 2600.0
@@ -37,6 +39,10 @@ var _spawn_position := Vector2.ZERO
 var _cooldown_timer := 0.0
 var _toggle_was_held := false
 var _controls_enabled := true
+var _magnetic_tile_attached := false
+var _attached_tile_field := 0
+var _attached_tile_position := Vector2.ZERO
+var _magnetic_floor_contact := false
 
 @onready var visual: Polygon2D = get_node_or_null("Visual")
 @onready var nameplate: Label = get_node_or_null("Nameplate")
@@ -80,6 +86,7 @@ func _physics_process(delta: float) -> void:
 					break
 
 	update_glued_state()
+	_update_magnetic_tile_effects(delta)
 
 	var ground_contact := is_touching_ground()
 	if is_glued and is_instance_valid(other_player):
@@ -98,7 +105,8 @@ func _physics_process(delta: float) -> void:
 	_toggle_was_held = toggle_held
 
 	var input_direction := _get_movement_input()
-	var target_speed := input_direction * max_speed
+	var speed_multiplier := 0.65 if _magnetic_floor_contact else 1.0
+	var target_speed := input_direction * max_speed * speed_multiplier
 	var rate := acceleration if not is_zero_approx(input_direction) else deceleration
 	velocity.x = move_toward(velocity.x, target_speed, rate * delta)
 
@@ -135,6 +143,55 @@ func _physics_process(delta: float) -> void:
 	if is_inside_tree():
 		move_and_slide()
 	_check_hazard()
+
+
+func _update_magnetic_tile_effects(delta: float) -> void:
+	_magnetic_tile_attached = false
+	_magnetic_floor_contact = false
+	if level_map == null:
+		return
+
+	var center_cell := level_map.local_to_map(level_map.to_local(global_position))
+	var cell_radius := ceili(tile_magnetic_radius / float(level_map.tile_set.tile_size.x))
+	var closest_opposite_distance := INF
+	var closest_opposite_position := Vector2.ZERO
+	var closest_opposite_field := 0
+	var same_field := polarity + 1
+
+	for x in range(center_cell.x - cell_radius, center_cell.x + cell_radius + 1):
+		for y in range(center_cell.y - cell_radius, center_cell.y + cell_radius + 1):
+			var cell := Vector2i(x, y)
+			var tile_data := level_map.get_cell_tile_data(cell)
+			if tile_data == null:
+				continue
+			var field := int(tile_data.get_custom_data("magnetic_field"))
+			if field == 0:
+				continue
+			var tile_position := level_map.to_global(level_map.map_to_local(cell))
+			var offset := global_position - tile_position
+			var distance := offset.length()
+			if distance <= 0.001:
+				offset = Vector2.UP
+				distance = 0.001
+			if field == same_field and distance < tile_magnetic_radius:
+				var falloff := 1.0 - distance / tile_magnetic_radius
+				velocity += offset.normalized() * magnetic_strength * 0.45 * falloff * falloff * delta
+			elif distance < closest_opposite_distance:
+				closest_opposite_distance = distance
+				closest_opposite_position = tile_position
+				closest_opposite_field = field
+
+	if closest_opposite_field == 0 or closest_opposite_distance > tile_magnetic_glue_distance:
+		_attached_tile_field = 0
+		return
+
+	_magnetic_tile_attached = true
+	_attached_tile_field = closest_opposite_field
+	_attached_tile_position = closest_opposite_position
+	var toward_tile := closest_opposite_position - global_position
+	velocity += toward_tile.normalized() * magnetic_strength * 0.32 * delta
+	# Floor magnets keep horizontal movement, but reduce it while holding the player down.
+	_magnetic_floor_contact = is_on_floor() and toward_tile.y > absf(toward_tile.x)
 
 
 func _check_hazard() -> void:
@@ -211,6 +268,9 @@ func toggle_polarity() -> bool:
 		return false
 	
 	var was_glued_before := is_glued or is_in_contact_with_other()
+	var was_attached_to_tile := _magnetic_tile_attached
+	var attached_tile_position := _attached_tile_position
+	var attached_tile_field := _attached_tile_field
 	polarity = Polarity.SOUTH if polarity == Polarity.NORTH else Polarity.NORTH
 	_cooldown_timer = polarity_cooldown
 	
@@ -246,6 +306,16 @@ func toggle_polarity() -> bool:
 			
 			play_repulsion_burst_effect(-dir)
 			other_player.play_repulsion_burst_effect(dir)
+
+	if was_attached_to_tile and attached_tile_field == polarity + 1:
+		var burst_direction := global_position - attached_tile_position
+		if burst_direction.length_squared() < 0.001:
+			burst_direction = Vector2.UP
+		velocity = burst_direction.normalized() * 850.0
+		velocity.y = minf(velocity.y, -260.0)
+		_magnetic_tile_attached = false
+		_attached_tile_field = 0
+		play_repulsion_burst_effect(burst_direction)
 	
 	queue_redraw()
 	return true

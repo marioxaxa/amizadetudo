@@ -3,12 +3,13 @@
 [ext_resource type="Script" uid="uid://51qd6hqbui12" path="res://scripts/character_body_2d.gd" id="1_player"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_player"]
-size = Vector2(30, 42)
+size = Vector2(30, 37)
 
 [node name="Player" type="CharacterBody2D" unique_id=1084935113]
 script = ExtResource("1_player")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1932965566]
+position = Vector2(0, -2.5)
 shape = SubResource("RectangleShape2D_player")
 
 [node name="Visual" type="Polygon2D" parent="." unique_id=1920993672]

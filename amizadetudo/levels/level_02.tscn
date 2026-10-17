@@ -1,20 +1,22 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=4 uid="uid://bnl1oubbydaf6"]
 
-[ext_resource type="PackedScene" path="res://node_2d.tscn" id="1_base"]
+[ext_resource type="PackedScene" uid="uid://bd1hrdyuwmule" path="res://node_2d.tscn" id="1_base"]
 [ext_resource type="PackedScene" path="res://scenes/level_exit.tscn" id="2_exit"]
 
-[node name="Level02" instance=ExtResource("1_base")]
+[node name="Level02" unique_id=988534333 instance=ExtResource("1_base")]
 
-[node name="StartPlayerOne" type="Marker2D" parent="."]
+[node name="TileMapLayer" parent="." index="1" unique_id=1916195467]
+tile_map_data = PackedByteArray("AAD1/xMAAAABAAAAAAD2/xMAAAABAAAAAAD3/xMAAAABAAAAAAD4/xMAAAABAAAAAAD5/xMAAAABAAAAAAD6/xMAAAABAAAAAAD7/xMAAAABAAAAAAD8/xMAAAABAAAAAAD9/xMAAAABAAAAAAD+/xMAAAABAAAAAAD//xMAAAABAAAAAAAAABMAAAABAAAAAAABABMAAAABAAAAAAACABMAAAABAAAAAAADABMAAAABAAAAAAAEABMAAAABAAAAAAAFABMAAAABAAAAAAAGABMAAAABAAAAAAAHABMAAAABAAAAAAAIABMAAAABAAAAAAAJABMAAAABAAAAAAAKABMAAAABAAAAAAALABMAAAABAAAAAAAMABMAAAABAAAAAAANABMAAAABAAAAAAAOABMAAAABAAAAAAAPABMAAAABAAAAAAAQABIAAAABAAAAAAARABIAAAABAAAAAAASABIAAAABAAAAAAATABIAAAABAAAAAAAUABIAAAABAAAAAAAVABIAAAABAAAAAAAWABIAAAABAAAAAAAXABIAAAABAAAAAAAYABIAAAABAAAAAAAYABMAAAABAAAAAAAZABMAAAABAAAAAAAaABMAAAABAAAAAAAbABMAAAABAAAAAAAcABMAAAABAAAAAAAdABMAAAABAAAAAAAeABMAAAABAAAAAAAfABMAAAABAAAAAAAgABMAAAABAAAAAAAhABMAAAABAAAAAAAiABMAAAABAAAAAAAjABMAAAABAAAAAAD+/xIAAAAEAAAAAAD//xIAAAAEAAAAAAAAABIAAAAEAAAAAAAFABIAAAADAAAAAAAGABIAAAADAAAAAAAHABIAAAADAAAAAAAIABIAAAADAAAAAAAKAAkAAAAEAAAAAAAKAAoAAAAEAAAAAAAKAAsAAAAEAAAAAAAKAAwAAAAEAAAAAAA=")
+
+[node name="StartPlayerOne" type="Marker2D" parent="." index="5" unique_id=874842265]
 position = Vector2(46, 175)
 
-[node name="StartPlayerTwo" type="Marker2D" parent="."]
+[node name="StartPlayerTwo" type="Marker2D" parent="." index="6" unique_id=1319899332]
 position = Vector2(153, 104)
 
-[node name="ExitPlayerOne" parent="." instance=ExtResource("2_exit")]
+[node name="ExitPlayerOne" parent="." index="7" unique_id=1185545527 instance=ExtResource("2_exit")]
 position = Vector2(800, 216)
-player_index = 1
 
-[node name="ExitPlayerTwo" parent="." instance=ExtResource("2_exit")]
+[node name="ExitPlayerTwo" parent="." index="8" unique_id=1912587479 instance=ExtResource("2_exit")]
 position = Vector2(855, 216)
-player_index = 2
+allowed_player = 2
