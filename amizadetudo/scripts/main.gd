@@ -12,13 +12,24 @@ func _ready() -> void:
 	_configure_input_map()
 	_build_level()
 	_assign_controllers()
+	player_one.set_other_player(player_two)
+	player_two.set_other_player(player_one)
 	Input.joy_connection_changed.connect(_on_joy_connection_changed)
 
 
 func _process(delta: float) -> void:
 	var midpoint := (player_one.global_position + player_two.global_position) * 0.5
 	camera.global_position = camera.global_position.lerp(midpoint, minf(delta * 5.0, 1.0))
-	status.text = "P1: %s   P2: %s\nTeclado: A/D + Espaco | Setas + Enter" % [_device_name(player_one.joypad_id), _device_name(player_two.joypad_id)]
+	status.text = "P1 [%s]: %s (A/D + Espaco + Shift)\nP2 [%s]: %s (Setas + Cima + Enter)" % [
+		_polarity_name(player_one.polarity),
+		_device_name(player_one.joypad_id),
+		_polarity_name(player_two.polarity),
+		_device_name(player_two.joypad_id)
+	]
+
+
+func _polarity_name(pol: int) -> String:
+	return "Norte / Vermelho" if pol == 0 else "Sul / Azul"
 
 
 func _assign_controllers() -> void:
@@ -31,14 +42,18 @@ func _configure_input_map() -> void:
 	_add_key_action("p1_left", KEY_A)
 	_add_key_action("p1_right", KEY_D)
 	_add_key_action("p1_jump", KEY_SPACE)
+	_add_key_action("p1_toggle_polarity", KEY_SHIFT)
 	_add_key_action("p2_left", KEY_LEFT)
 	_add_key_action("p2_right", KEY_RIGHT)
-	_add_key_action("p2_jump", KEY_ENTER)
+	_add_key_action("p2_jump", KEY_UP)
+	_add_key_action("p2_toggle_polarity", KEY_ENTER)
 
 
 func _add_key_action(action: StringName, keycode: Key) -> void:
 	if not InputMap.has_action(action):
 		InputMap.add_action(action)
+	else:
+		InputMap.action_erase_events(action)
 	var event := InputEventKey.new()
 	event.physical_keycode = keycode
 	InputMap.action_add_event(action, event)

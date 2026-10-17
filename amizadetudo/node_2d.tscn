@@ -1,48 +1,48 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://bd1hrdyuwmule"]
 
-[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" uid="uid://cuy5lcpr07wdl" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://player.tscn" id="2_player"]
 
-[node name="Game" type="Node2D"]
+[node name="Game" type="Node2D" unique_id=323105020]
 script = ExtResource("1_main")
 
-[node name="Backdrop" type="Polygon2D" parent="."]
-polygon = PackedVector2Array(-1600, -600, 3000, -600, 3000, 900, -1600, 900)
+[node name="Backdrop" type="Polygon2D" parent="." unique_id=1721699380]
 color = Color(0.055, 0.082, 0.14, 1)
+polygon = PackedVector2Array(-1600, -600, 3000, -600, 3000, 900, -1600, 900)
 
-[node name="TileMapLayer" type="TileMapLayer" parent="."]
+[node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=333318943]
 
-[node name="Players" type="Node2D" parent="."]
+[node name="Players" type="Node2D" parent="." unique_id=1402996685]
 
-[node name="PlayerOne" parent="Players" instance=ExtResource("2_player")]
+[node name="PlayerOne" parent="Players" unique_id=536436913 instance=ExtResource("2_player")]
 position = Vector2(180, 420)
-player_index = 1
 player_color = Color(0.333, 0.839, 1, 1)
 
-[node name="PlayerTwo" parent="Players" instance=ExtResource("2_player")]
+[node name="PlayerTwo" parent="Players" unique_id=1184196694 instance=ExtResource("2_player")]
 position = Vector2(300, 420)
 player_index = 2
 player_color = Color(1, 0.424, 0.549, 1)
+polarity = 1
 
-[node name="SharedCamera" type="Camera2D" parent="."]
+[node name="SharedCamera" type="Camera2D" parent="." unique_id=373816413]
 position = Vector2(240, 360)
-position_smoothing_enabled = true
-position_smoothing_speed = 6.0
 limit_left = -384
 limit_top = 0
 limit_right = 2208
 limit_bottom = 648
+position_smoothing_enabled = true
+position_smoothing_speed = 6.0
 
-[node name="CanvasLayer" type="CanvasLayer" parent="."]
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1289739951]
 
-[node name="Title" type="Label" parent="CanvasLayer"]
+[node name="Title" type="Label" parent="CanvasLayer" unique_id=94282964]
 offset_left = 28.0
 offset_top = 22.0
 theme_override_colors/font_color = Color(0.9, 0.96, 1, 1)
 theme_override_font_sizes/font_size = 24
 text = "DOIS LADOS"
 
-[node name="Status" type="Label" parent="CanvasLayer"]
+[node name="Status" type="Label" parent="CanvasLayer" unique_id=1691519690]
 offset_left = 29.0
 offset_top = 57.0
 theme_override_colors/font_color = Color(0.65, 0.75, 0.9, 1)
