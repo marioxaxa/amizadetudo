@@ -26,6 +26,7 @@ player_color = Color(0.333, 0.839, 1, 1)
 position = Vector2(153, 104)
 player_index = 2
 player_color = Color(1, 0.424, 0.549, 1)
+polarity = 1
 
 [node name="SharedCamera" type="Camera2D" parent="." unique_id=1397204389]
 position = Vector2(240, 360)
@@ -33,6 +34,8 @@ limit_left = -384
 limit_top = 0
 limit_right = 2208
 limit_bottom = 648
+position_smoothing_enabled = true
+position_smoothing_speed = 6.0
 position_smoothing_enabled = true
 position_smoothing_speed = 6.0
 
