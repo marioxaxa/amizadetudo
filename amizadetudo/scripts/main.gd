@@ -14,6 +14,7 @@ var _death_tweens: Dictionary[int, Tween] = {}
 
 func _ready() -> void:
 	_configure_input_map()
+	_set_start_positions()
 	player_one.level_map = $TileMapLayer
 	player_two.level_map = $TileMapLayer
 	player_one.died.connect(_on_player_died)
@@ -21,6 +22,8 @@ func _ready() -> void:
 	_assign_controllers()
 	player_one.set_other_player(player_two)
 	player_two.set_other_player(player_one)
+	for level_exit in get_tree().get_nodes_in_group("level_exits"):
+		level_exit.readiness_changed.connect(_on_exit_readiness_changed)
 	Input.joy_connection_changed.connect(_on_joy_connection_changed)
 
 
@@ -68,6 +71,27 @@ func _add_key_action(action: StringName, keycode: Key) -> void:
 
 func _on_joy_connection_changed(_device: int, _connected: bool) -> void:
 	_assign_controllers()
+
+
+func _set_start_positions() -> void:
+	var start_one := get_node_or_null("StartPlayerOne") as Marker2D
+	var start_two := get_node_or_null("StartPlayerTwo") as Marker2D
+	if start_one:
+		player_one.set_spawn_point(start_one.global_position)
+	if start_two:
+		player_two.set_spawn_point(start_two.global_position)
+
+
+func _on_exit_readiness_changed(_player_index: int, _is_ready: bool) -> void:
+	var exits := get_tree().get_nodes_in_group("level_exits")
+	if exits.size() != 2:
+		return
+	for level_exit in exits:
+		if not level_exit.is_player_ready():
+			return
+	player_one.set_controls_enabled(false)
+	player_two.set_controls_enabled(false)
+	LevelManager.advance_level()
 
 
 func _on_player_died(player_index: int, death_count: int) -> void:

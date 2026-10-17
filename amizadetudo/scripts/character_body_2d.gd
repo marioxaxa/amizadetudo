@@ -31,6 +31,7 @@ var _is_dead := false
 var _spawn_position := Vector2.ZERO
 var _cooldown_timer := 0.0
 var _toggle_was_held := false
+var _controls_enabled := true
 
 @onready var visual: Polygon2D = get_node_or_null("Visual")
 @onready var nameplate: Label = get_node_or_null("Nameplate")
@@ -51,8 +52,19 @@ func set_joypad(device_id: int) -> void:
 	joypad_id = device_id
 
 
+func set_spawn_point(spawn_position: Vector2) -> void:
+	_spawn_position = spawn_position
+	global_position = spawn_position
+
+
+func set_controls_enabled(enabled: bool) -> void:
+	_controls_enabled = enabled
+	if not enabled:
+		velocity = Vector2.ZERO
+
+
 func _physics_process(delta: float) -> void:
-	if _is_dead:
+	if _is_dead or not _controls_enabled:
 		return
 	var was_on_floor := is_on_floor()
 	if was_on_floor:
