@@ -203,21 +203,40 @@ func toggle_polarity() -> bool:
 				var top_player: CharacterBody2D = self if global_position.y < other_player.global_position.y else other_player
 				var bottom_player: CharacterBody2D = other_player if top_player == self else self
 				
-				# Player on top receives a huge super jump launch!
-				top_player.velocity.y = -super_jump_speed
-				top_player.velocity.x = -dir.x * 350.0 if top_player == self else dir.x * 350.0
+				# Directional launch calculation based on relative position on head
+				var dx: float = top_player.global_position.x - bottom_player.global_position.x
+				var side := signf(dx)
+				if is_zero_approx(side):
+					side = 1.0 if player_index == 1 else -1.0
 				
-				# Player below is pushed firmly downward
-				bottom_player.velocity.y = stacked_push_down_speed
-				bottom_player.velocity.x = -dir.x * 350.0 if bottom_player == self else dir.x * 350.0
+				var launch_dir: Vector2
+				if absf(dx) <= 6.0:
+					# Centered on the flat part of the head: purely vertical launch
+					launch_dir = Vector2(0.0, -1.0)
+					top_player.velocity.x = 0.0
+					top_player.velocity.y = -super_jump_speed
+					bottom_player.velocity.x = 0.0
+					bottom_player.velocity.y = stacked_push_down_speed
+				else:
+					# On diagonal chamfer: directional diagonal launch
+					var offset_ratio: float = clampf((absf(dx) - 6.0) / 12.0, 0.0, 1.0)
+					var lateral_ratio: float = 0.35 + 0.40 * offset_ratio
+					launch_dir = Vector2(side * lateral_ratio, -1.0).normalized()
+					
+					top_player.velocity = launch_dir * super_jump_speed
+					bottom_player.velocity.x = -side * (absf(top_player.velocity.x) * 0.45)
+					bottom_player.velocity.y = stacked_push_down_speed
+				
+				top_player.play_repulsion_burst_effect(-launch_dir)
+				bottom_player.play_repulsion_burst_effect(launch_dir)
 			else:
 				velocity.x = -dir.x * horizontal_burst_speed
 				other_player.velocity.x = dir.x * horizontal_burst_speed
 				velocity.y = minf(velocity.y, horizontal_burst_lift)
 				other_player.velocity.y = minf(other_player.velocity.y, horizontal_burst_lift)
-			
-			play_repulsion_burst_effect(-dir)
-			other_player.play_repulsion_burst_effect(dir)
+				
+				play_repulsion_burst_effect(-dir)
+				other_player.play_repulsion_burst_effect(dir)
 	
 	queue_redraw()
 	return true

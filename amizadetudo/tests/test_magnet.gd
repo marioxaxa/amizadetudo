@@ -15,6 +15,8 @@ func _init() -> void:
 	failures += test_vertical_repulsion_burst()
 	failures += test_mid_air_jump_push()
 	failures += test_stacked_super_jump()
+	failures += test_stacked_diagonal_repulsion()
+	failures += test_player_collision_shape()
 	
 	if failures > 0:
 		print("FAILED: %d tests failed" % failures)
@@ -416,6 +418,77 @@ func test_stacked_super_jump() -> int:
 	p1.free()
 	p2.free()
 	return err
+
+
+func test_stacked_diagonal_repulsion() -> int:
+	print("Testing stacked diagonal repulsion (offset on sloped head)...")
+	var player_script = load("res://scripts/character_body_2d.gd")
+	var p1 = player_script.new()
+	var p2 = player_script.new()
+	p1.set_other_player(p2)
+	p2.set_other_player(p1)
+	p1.polarity = p1.Polarity.NORTH
+	p2.polarity = p2.Polarity.SOUTH
+	
+	# Offset to the right (x=112 vs x=100 -> dx = +12px)
+	p1.position = Vector2(112, 160)
+	p2.position = Vector2(100, 200)
+	
+	var err := 0
+	p1.update_glued_state()
+	p2.update_glued_state()
+	err += assert_true(p1.is_glued == true, "players are glued when offset on diagonal top")
+	
+	# P1 toggles polarity (triggers diagonal repulsion launch)
+	p1.toggle_polarity()
+	err += assert_true(p1.velocity.x > 300.0, "p1 on right diagonal is launched right (velocity.x > 300)")
+	err += assert_true(p1.velocity.y < -700.0, "p1 is launched upward (velocity.y < -700)")
+	err += assert_true(p2.velocity.x < -100.0, "p2 bottom player receives opposite horizontal recoil")
+	err += assert_true(p2.velocity.y > 300.0, "p2 bottom player receives downward push")
+	
+	p1.free()
+	p2.free()
+	
+	# Test left diagonal offset (dx = -12px)
+	p1 = player_script.new()
+	p2 = player_script.new()
+	p1.set_other_player(p2)
+	p2.set_other_player(p1)
+	p1.polarity = p1.Polarity.NORTH
+	p2.polarity = p2.Polarity.SOUTH
+	p1.position = Vector2(88, 160)
+	p2.position = Vector2(100, 200)
+	p1.update_glued_state()
+	p1.toggle_polarity()
+	err += assert_true(p1.velocity.x < -300.0, "p1 on left diagonal is launched left (velocity.x < -300)")
+	err += assert_true(p1.velocity.y < -700.0, "p1 on left diagonal is launched upward (velocity.y < -700)")
+	
+	p1.free()
+	p2.free()
+	return err
+
+
+func test_player_collision_shape() -> int:
+	print("Testing player collision shape matches diagonal edges...")
+	var scene = load("res://player.tscn")
+	var instance = scene.instantiate()
+	var err := 0
+	
+	var col_shape = instance.get_node_or_null("CollisionShape2D")
+	var col_polygon = instance.get_node_or_null("CollisionPolygon2D")
+	
+	var has_diagonal_collision := false
+	if col_polygon != null:
+		has_diagonal_collision = col_polygon.polygon.size() > 4
+	elif col_shape != null and col_shape.shape is ConvexPolygonShape2D:
+		var points = (col_shape.shape as ConvexPolygonShape2D).points
+		has_diagonal_collision = points.size() > 4
+	
+	err += assert_true(has_diagonal_collision, "player collision has diagonal chamfered shape with > 4 points")
+	
+	instance.free()
+	return err
+
 
 
 
