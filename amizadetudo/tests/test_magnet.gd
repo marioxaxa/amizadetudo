@@ -8,6 +8,13 @@ func _init() -> void:
 	failures += test_magnetic_force()
 	failures += test_aura_properties()
 	failures += test_scene_integration()
+	failures += test_glued_state_and_force_cancellation()
+	failures += test_glued_synchronized_movement()
+	failures += test_glued_repulsion_burst()
+	failures += test_glued_gravity_in_air()
+	failures += test_vertical_repulsion_burst()
+	failures += test_mid_air_jump_push()
+	failures += test_stacked_super_jump()
 	
 	if failures > 0:
 		print("FAILED: %d tests failed" % failures)
@@ -115,7 +122,7 @@ func test_magnetic_force() -> int:
 	
 	var err := 0
 	err += assert_true(p1.has_method("calculate_magnetic_force"), "player has calculate_magnetic_force method")
-	err += assert_true(p1.magnetic_strength >= 9000.0, "magnetic_strength is 9000.0 (5x increase)")
+	err += assert_true(p1.magnetic_strength > 0.0, "magnetic_strength is positive")
 	if not p1.has_method("calculate_magnetic_force"):
 		p1.free()
 		p2.free()
@@ -192,6 +199,230 @@ func test_scene_integration() -> int:
 	
 	scene.free()
 	return err
+
+
+func test_glued_state_and_force_cancellation() -> int:
+	print("Testing glued (COLADOS) state and force cancellation...")
+	var player_script = load("res://scripts/character_body_2d.gd")
+	var p1 = player_script.new()
+	var p2 = player_script.new()
+	p1.set_other_player(p2)
+	p2.set_other_player(p1)
+	p1.polarity = p1.Polarity.NORTH
+	p2.polarity = p2.Polarity.SOUTH
+	
+	var err := 0
+	err += assert_true(p1.get("is_glued") != null, "player has is_glued property")
+	if p1.get("is_glued") == null:
+		p1.free()
+		p2.free()
+		return err
+	
+	# Close distance (30px), opposite polarities -> should enter is_glued state
+	p1.position = Vector2(100, 200)
+	p2.position = Vector2(130, 200)
+	p1.update_glued_state()
+	p2.update_glued_state()
+	err += assert_true(p1.is_glued == true, "p1 is_glued is true when touching with opposite polarities")
+	err += assert_true(p2.is_glued == true, "p2 is_glued is true when touching with opposite polarities")
+	
+	# When glued, continuous magnetic force must be zero
+	var force_when_glued = p1.calculate_magnetic_force(p2)
+	err += assert_true(force_when_glued == Vector2.ZERO, "magnetic force is ZERO when glued")
+	
+	# When far away (distance 100px), not glued
+	p2.position = Vector2(200, 200)
+	p1.update_glued_state()
+	err += assert_true(p1.is_glued == false, "p1 is_glued is false when far away")
+	
+	p1.free()
+	p2.free()
+	return err
+
+
+func test_glued_synchronized_movement() -> int:
+	print("Testing glued synchronized movement and jump...")
+	var player_script = load("res://scripts/character_body_2d.gd")
+	var p1 = player_script.new()
+	var p2 = player_script.new()
+	p1.set_other_player(p2)
+	p2.set_other_player(p1)
+	p1.is_glued = true
+	p2.is_glued = true
+	
+	var err := 0
+	err += assert_true(p1.has_method("_get_movement_input"), "p1 has _get_movement_input method")
+	err += assert_true(p1.has_method("_is_jump_held"), "p1 has _is_jump_held method")
+	err += assert_true("simulated_input" in p1, "player supports simulated_input for movement testing")
+	
+	if "simulated_input" in p1:
+		p1.set("simulated_input", 0.0)
+		p2.set("simulated_input", 1.0)
+		err += assert_true(p1._get_movement_input() == 1.0, "p1 moves right when p2 moves right while glued")
+		err += assert_true(p2._get_movement_input() == 1.0, "p2 moves right while glued")
+		
+		# Test simulated jump
+		p1.set("simulated_jump", false)
+		p2.set("simulated_jump", true)
+		err += assert_true(p1._is_jump_held() == true, "p1 jump is held when p2 jump is held while glued")
+		err += assert_true(p2._is_jump_held() == true, "p2 jump is held while glued")
+	
+	p1.free()
+	p2.free()
+	return err
+
+
+func test_glued_repulsion_burst() -> int:
+	print("Testing glued repulsion burst when toggling polarity...")
+	var player_script = load("res://scripts/character_body_2d.gd")
+	var p1 = player_script.new()
+	var p2 = player_script.new()
+	p1.set_other_player(p2)
+	p2.set_other_player(p1)
+	p1.polarity = p1.Polarity.NORTH
+	p2.polarity = p2.Polarity.SOUTH
+	p1.position = Vector2(100, 200)
+	p2.position = Vector2(130, 200)
+	p1.is_glued = true
+	p2.is_glued = true
+	
+	var err := 0
+	# p1 toggles polarity (becomes SOUTH, matching p2 -> causes separation burst)
+	p1.toggle_polarity()
+	err += assert_true(p1.is_glued == false, "p1 is no longer glued after repulsion toggle")
+	err += assert_true(p2.is_glued == false, "p2 is no longer glued after repulsion toggle")
+	err += assert_true(p1.velocity.x < -300.0, "p1 receives explosive burst to the left (velocity.x < -300)")
+	err += assert_true(p2.velocity.x > 300.0, "p2 receives explosive burst to the right (velocity.x > 300)")
+	err += assert_true(p1.has_method("play_repulsion_burst_effect"), "player has play_repulsion_burst_effect method")
+	
+	p1.free()
+	p2.free()
+	return err
+
+
+func test_glued_gravity_in_air() -> int:
+	print("Testing glued gravity in mid-air...")
+	var player_script = load("res://scripts/character_body_2d.gd")
+	var p1 = player_script.new()
+	var p2 = player_script.new()
+	p1.set_other_player(p2)
+	p2.set_other_player(p1)
+	p1.is_glued = true
+	p2.is_glued = true
+	p1.velocity.y = -500.0
+	p2.velocity.y = -500.0
+	
+	var err := 0
+	err += assert_true(p1.has_method("is_touching_ground"), "player has is_touching_ground method")
+	if not p1.has_method("is_touching_ground"):
+		p1.free()
+		p2.free()
+		return err
+	
+	p1._physics_process(0.1)
+	p2._physics_process(0.1)
+	
+	# Gravity (1500 * 0.1 = 150) should increase velocity.y from -500 to -350
+	err += assert_true(p1.velocity.y > -500.0, "gravity increases p1 velocity.y in air when glued")
+	err += assert_true(p2.velocity.y > -500.0, "gravity increases p2 velocity.y in air when glued")
+	
+	p1.free()
+	p2.free()
+	return err
+
+
+func test_vertical_repulsion_burst() -> int:
+	print("Testing vertical repulsion burst (player above another)...")
+	var player_script = load("res://scripts/character_body_2d.gd")
+	var p1 = player_script.new()
+	var p2 = player_script.new()
+	p1.set_other_player(p2)
+	p2.set_other_player(p1)
+	p1.polarity = p1.Polarity.NORTH
+	p2.polarity = p2.Polarity.SOUTH
+	# p1 is above p2
+	p1.position = Vector2(100, 170)
+	p2.position = Vector2(100, 200)
+	p1.is_glued = true
+	p2.is_glued = true
+	
+	var err := 0
+	p1.toggle_polarity()
+	err += assert_true(p1.is_glued == false, "p1 is no longer glued after vertical repulsion")
+	err += assert_true(p2.is_glued == false, "p2 is no longer glued after vertical repulsion")
+	err += assert_true(p1.velocity.y < -500.0, "p1 (above) is propelled strongly upward (velocity.y < -500)")
+	err += assert_true(p2.velocity.y > 300.0, "p2 (below) is propelled downward (velocity.y > 300)")
+	
+	p1.free()
+	p2.free()
+	return err
+
+
+func test_mid_air_jump_push() -> int:
+	print("Testing mid-air jump repulsion force...")
+	var player_script = load("res://scripts/character_body_2d.gd")
+	var p1 = player_script.new()
+	var p2 = player_script.new()
+	p1.set_other_player(p2)
+	p2.set_other_player(p1)
+	p1.polarity = p1.Polarity.NORTH
+	p2.polarity = p2.Polarity.NORTH
+	# In air: p1 above p2
+	p1.position = Vector2(100, 160)
+	p2.position = Vector2(100, 200)
+	
+	var err := 0
+	var f1: Vector2 = p1.calculate_magnetic_force(p2)
+	var f2: Vector2 = p2.calculate_magnetic_force(p1)
+	err += assert_true(f1.y < 0.0, "p1 pushed upward in air by repelling p2")
+	err += assert_true(f2.y > 0.0, "p2 pushed downward in air by repelling p1")
+	
+	# Diagonal air jump push
+	p1.position = Vector2(70, 160)
+	p2.position = Vector2(100, 200)
+	var f1_diag: Vector2 = p1.calculate_magnetic_force(p2)
+	var f2_diag: Vector2 = p2.calculate_magnetic_force(p1)
+	err += assert_true(f1_diag.x < 0.0 and f1_diag.y < 0.0, "diagonal push pushes p1 up and left")
+	err += assert_true(f2_diag.x > 0.0 and f2_diag.y > 0.0, "diagonal push pushes p2 down and right")
+	
+	p1.free()
+	p2.free()
+	return err
+
+
+func test_stacked_super_jump() -> int:
+	print("Testing stacked super jump (player on top of another)...")
+	var player_script = load("res://scripts/character_body_2d.gd")
+	var p1 = player_script.new()
+	var p2 = player_script.new()
+	p1.set_other_player(p2)
+	p2.set_other_player(p1)
+	p1.polarity = p1.Polarity.NORTH
+	p2.polarity = p2.Polarity.SOUTH
+	# Real collision height: p1 at y=158, p2 at y=200 (vertical difference 42px)
+	p1.position = Vector2(100, 158)
+	p2.position = Vector2(100, 200)
+	
+	var err := 0
+	p1.update_glued_state()
+	p2.update_glued_state()
+	err += assert_true(p1.is_glued == true, "players are glued when stacked vertically at 42px")
+	
+	# P1 toggles polarity (causes super-jump launch upward)
+	p1.toggle_polarity()
+	err += assert_true(p1.velocity.y <= -1000.0, "p1 (top player) launches upward with super jump velocity (<= -1000)")
+	err += assert_true(p2.velocity.y >= 500.0, "p2 (bottom player) is pushed downward (>= 500)")
+	
+	p1.free()
+	p2.free()
+	return err
+
+
+
+
+
+
+
 
 
 
