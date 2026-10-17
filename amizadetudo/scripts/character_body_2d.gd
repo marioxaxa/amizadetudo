@@ -5,32 +5,46 @@ enum Polarity {
 	SOUTH
 }
 
+@export_group("Player Settings")
 @export var player_index := 1
 @export var player_color := Color("55d6ff")
-@export var polarity: Polarity = Polarity.NORTH
-@export var aura_radius := 60.0
-@export var polarity_cooldown := 1.0
-@export var magnetic_strength := 4000.0
+
+@export_group("Movement")
 @export var tile_magnetic_radius := 112.0
 @export var tile_magnetic_glue_distance := 54.0
 @export var max_speed := 300.0
 @export var acceleration := 2200.0
 @export var deceleration := 2600.0
+
+@export_group("Jump & Gravity")
 @export var jump_velocity := -540.0
+@export var gravity := 1500.0
 @export var coyote_time := 0.12
 @export var jump_buffer_time := 0.12
 @export var respawn_delay := 2.0
 
-const GRAVITY := 1500.0
+@export_group("Magnetism")
+@export var polarity: Polarity = Polarity.NORTH
+@export var polarity_cooldown := 1.0
+@export var aura_radius := 60.0
+@export var magnetic_strength := 4000.0
+
+@export_group("Repulsion & Burst")
+@export var super_jump_speed := 1050.0
+@export var stacked_push_down_speed := 600.0
+@export var horizontal_burst_speed := 850.0
+@export var horizontal_burst_lift := -260.0
+
+# --- Constants ---
 const GLUE_DISTANCE := 38.0
 
+# --- Game & Player State ---
 var joypad_id := -1
 var level_map: TileMapLayer
 var other_player: CharacterBody2D = null
 var is_glued := false
-var simulated_input = null
-var simulated_jump = null
-var aura_pulse := 1.0
+
+# --- Timers & Input State ---
 var _coyote_timer := 0.0
 var _jump_buffer_timer := 0.0
 var _jump_was_held := false
@@ -44,6 +58,14 @@ var _attached_tile_field := 0
 var _attached_tile_position := Vector2.ZERO
 var _magnetic_floor_contact := false
 
+# --- Visual Effects ---
+var aura_pulse := 1.0
+
+# --- Testing / Simulation Stubs ---
+var simulated_input = null
+var simulated_jump = null
+
+# --- Node References ---
 @onready var visual: Polygon2D = get_node_or_null("Visual")
 @onready var nameplate: Label = get_node_or_null("Nameplate")
 
@@ -96,7 +118,7 @@ func _physics_process(delta: float) -> void:
 		_coyote_timer = coyote_time
 	else:
 		_coyote_timer = maxf(_coyote_timer - delta, 0.0)
-		velocity.y += GRAVITY * delta
+		velocity.y += gravity * delta
 
 	_cooldown_timer = maxf(_cooldown_timer - delta, 0.0)
 	var toggle_held := _is_toggle_held()
@@ -289,23 +311,40 @@ func toggle_polarity() -> bool:
 				var top_player: CharacterBody2D = self if global_position.y < other_player.global_position.y else other_player
 				var bottom_player: CharacterBody2D = other_player if top_player == self else self
 				
-				# Player on top receives a huge super jump launch!
-				var super_jump_speed := 1050.0
-				top_player.velocity.y = -super_jump_speed
-				top_player.velocity.x = -dir.x * 350.0 if top_player == self else dir.x * 350.0
+				# Directional launch calculation based on relative position on head
+				var dx: float = top_player.global_position.x - bottom_player.global_position.x
+				var side := signf(dx)
+				if is_zero_approx(side):
+					side = 1.0 if player_index == 1 else -1.0
 				
-				# Player below is pushed firmly downward
-				bottom_player.velocity.y = 600.0
-				bottom_player.velocity.x = -dir.x * 350.0 if bottom_player == self else dir.x * 350.0
+				var launch_dir: Vector2
+				if absf(dx) <= 6.0:
+					# Centered on the flat part of the head: purely vertical launch
+					launch_dir = Vector2(0.0, -1.0)
+					top_player.velocity.x = 0.0
+					top_player.velocity.y = -super_jump_speed
+					bottom_player.velocity.x = 0.0
+					bottom_player.velocity.y = stacked_push_down_speed
+				else:
+					# On diagonal chamfer: directional diagonal launch
+					var offset_ratio: float = clampf((absf(dx) - 6.0) / 12.0, 0.0, 1.0)
+					var lateral_ratio: float = 0.35 + 0.40 * offset_ratio
+					launch_dir = Vector2(side * lateral_ratio, -1.0).normalized()
+					
+					top_player.velocity = launch_dir * super_jump_speed
+					bottom_player.velocity.x = -side * (absf(top_player.velocity.x) * 0.45)
+					bottom_player.velocity.y = stacked_push_down_speed
+				
+				top_player.play_repulsion_burst_effect(-launch_dir)
+				bottom_player.play_repulsion_burst_effect(launch_dir)
 			else:
-				var burst_speed := 850.0
-				velocity.x = -dir.x * burst_speed
-				other_player.velocity.x = dir.x * burst_speed
-				velocity.y = minf(velocity.y, -260.0)
-				other_player.velocity.y = minf(other_player.velocity.y, -260.0)
-			
-			play_repulsion_burst_effect(-dir)
-			other_player.play_repulsion_burst_effect(dir)
+				velocity.x = -dir.x * horizontal_burst_speed
+				other_player.velocity.x = dir.x * horizontal_burst_speed
+				velocity.y = minf(velocity.y, horizontal_burst_lift)
+				other_player.velocity.y = minf(other_player.velocity.y, horizontal_burst_lift)
+				
+				play_repulsion_burst_effect(-dir)
+				other_player.play_repulsion_burst_effect(dir)
 
 	if was_attached_to_tile and attached_tile_field == polarity + 1:
 		var burst_direction := global_position - attached_tile_position
