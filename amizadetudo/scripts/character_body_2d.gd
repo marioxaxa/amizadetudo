@@ -8,21 +8,28 @@ extends CharacterBody2D
 @export var jump_velocity := -540.0
 @export var coyote_time := 0.12
 @export var jump_buffer_time := 0.12
+@export var respawn_delay := 2.0
 
 const GRAVITY := 1500.0
 
 var joypad_id := -1
+var level_map: TileMapLayer
 var _coyote_timer := 0.0
 var _jump_buffer_timer := 0.0
 var _jump_was_held := false
+var _is_dead := false
+var _spawn_position := Vector2.ZERO
 
 @onready var visual: Polygon2D = $Visual
 @onready var nameplate: Label = $Nameplate
+
+signal died(player: int, death_count: int)
 
 
 func _ready() -> void:
 	visual.color = player_color
 	nameplate.text = "P%d" % player_index
+	_spawn_position = global_position
 
 
 func set_joypad(device_id: int) -> void:
@@ -30,6 +37,8 @@ func set_joypad(device_id: int) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _is_dead:
+		return
 	var was_on_floor := is_on_floor()
 	if was_on_floor:
 		_coyote_timer = coyote_time
@@ -56,6 +65,34 @@ func _physics_process(delta: float) -> void:
 		_play_jump_tween()
 
 	move_and_slide()
+	_check_hazard()
+
+
+func _check_hazard() -> void:
+	if level_map == null:
+		return
+	for offset_x in [-12.0, 0.0, 12.0]:
+		var map_position := level_map.local_to_map(level_map.to_local(global_position + Vector2(offset_x, 18.0)))
+		var tile_data := level_map.get_cell_tile_data(map_position)
+		if tile_data != null and tile_data.get_custom_data("hazard") == true:
+			die()
+			return
+
+
+func die() -> void:
+	if _is_dead:
+		return
+	_is_dead = true
+	velocity = Vector2.ZERO
+	visible = false
+	var save_manager := get_node_or_null("/root/SaveManager")
+	var death_count: int = save_manager.register_death(player_index) if save_manager != null else 0
+	died.emit(player_index, death_count)
+	await get_tree().create_timer(respawn_delay).timeout
+	global_position = _spawn_position
+	velocity = Vector2.ZERO
+	visible = true
+	_is_dead = false
 
 
 func _get_movement_input() -> float:

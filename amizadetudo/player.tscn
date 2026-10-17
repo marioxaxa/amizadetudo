@@ -1,21 +1,21 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://cggtfvkcx6ro5"]
 
-[ext_resource type="Script" path="res://scripts/character_body_2d.gd" id="1_player"]
+[ext_resource type="Script" uid="uid://51qd6hqbui12" path="res://scripts/character_body_2d.gd" id="1_player"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_player"]
 size = Vector2(30, 42)
 
-[node name="Player" type="CharacterBody2D"]
+[node name="Player" type="CharacterBody2D" unique_id=1084935113]
 script = ExtResource("1_player")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1932965566]
 shape = SubResource("RectangleShape2D_player")
 
-[node name="Visual" type="Polygon2D" parent="."]
-polygon = PackedVector2Array(-15, 18, -18, -6, -8, -21, 8, -21, 18, -6, 15, 18)
+[node name="Visual" type="Polygon2D" parent="." unique_id=1920993672]
 color = Color(0.333, 0.839, 1, 1)
+polygon = PackedVector2Array(-15, 18, -18, -6, -8, -21, 8, -21, 18, -6, 15, 18)
 
-[node name="Nameplate" type="Label" parent="."]
+[node name="Nameplate" type="Label" parent="." unique_id=962411646]
 offset_left = -18.0
 offset_top = -47.0
 offset_right = 18.0
