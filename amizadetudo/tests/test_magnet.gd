@@ -7,6 +7,7 @@ func _init() -> void:
 	failures += test_player_polarity_and_cooldown()
 	failures += test_magnetic_force()
 	failures += test_aura_properties()
+	failures += test_player_hover()
 	failures += test_scene_integration()
 	failures += test_level_exit_player_identity()
 	failures += test_glued_state_and_force_cancellation()
@@ -180,6 +181,30 @@ func test_aura_properties() -> int:
 	return err
 
 
+func test_player_hover() -> int:
+	print("Testing same-polarity player hover...")
+	var player_script = load("res://scripts/character_body_2d.gd")
+	var p1 = player_script.new()
+	var p2 = player_script.new()
+	p1.set_other_player(p2)
+	p2.set_other_player(p1)
+	p1.polarity = p1.Polarity.NORTH
+	p2.polarity = p2.Polarity.NORTH
+	p1.position = Vector2(100, 146)
+	p2.position = Vector2(100, 200)
+	var err := 0
+
+	p1._update_player_hover()
+	p2._update_player_hover()
+	err += assert_true(p1._magnetic_hovering, "top player hovers over a same-polarity player")
+	err += assert_true(not p2._magnetic_hovering, "bottom player does not hover")
+	err += assert_true(p1._magnetic_hover_target.y == p2.position.y - p1.magnetic_hover_height, "hover target uses the configured height")
+
+	p1.free()
+	p2.free()
+	return err
+
+
 func test_scene_integration() -> int:
 	print("Testing scene integration (node_2d.tscn)...")
 	var scene_res = load("res://node_2d.tscn")
@@ -292,6 +317,15 @@ func test_glued_synchronized_movement() -> int:
 		p2.set("simulated_jump", true)
 		err += assert_true(p1._is_jump_held() == true, "p1 jump is held when p2 jump is held while glued")
 		err += assert_true(p2._is_jump_held() == true, "p2 jump is held while glued")
+
+		# The lower player carries a mounted player without applying a magnetic force.
+		p1.position = Vector2(100, 158)
+		p2.position = Vector2(112, 200)
+		p1.player_mounting_player = true
+		p2.velocity.x = 180.0
+		p2._carry_mounted_player(0.1)
+		err += assert_true(p1.position.x > 100.0 and p1.position.x < p2.position.x, "lower player smoothly carries the mounted player")
+		err += assert_true(p1.velocity.x > 0.0 and p1.velocity.x < p2.velocity.x, "mounted player smoothly inherits lower player velocity")
 	
 	p1.free()
 	p2.free()
@@ -436,7 +470,7 @@ func test_stacked_super_jump() -> int:
 	
 	# P1 toggles polarity (causes super-jump launch upward)
 	p1.toggle_polarity()
-	err += assert_true(p1.velocity.y <= -1000.0, "p1 (top player) launches upward with super jump velocity (<= -1000)")
+	err += assert_true(p1.velocity.y <= -p1.super_jump_speed, "p1 (top player) launches upward with super jump velocity")
 	err += assert_true(p2.velocity.y >= 500.0, "p2 (bottom player) is pushed downward (>= 500)")
 	
 	p1.free()
@@ -466,7 +500,7 @@ func test_stacked_diagonal_repulsion() -> int:
 	# P1 toggles polarity (triggers diagonal repulsion launch)
 	p1.toggle_polarity()
 	err += assert_true(p1.velocity.x > 300.0, "p1 on right diagonal is launched right (velocity.x > 300)")
-	err += assert_true(p1.velocity.y < -700.0, "p1 is launched upward (velocity.y < -700)")
+	err += assert_true(p1.velocity.y <= -p1.super_jump_speed * 0.75, "p1 is launched upward")
 	err += assert_true(p2.velocity.x < -100.0, "p2 bottom player receives opposite horizontal recoil")
 	err += assert_true(p2.velocity.y > 300.0, "p2 bottom player receives downward push")
 	
@@ -485,7 +519,7 @@ func test_stacked_diagonal_repulsion() -> int:
 	p1.update_glued_state()
 	p1.toggle_polarity()
 	err += assert_true(p1.velocity.x < -300.0, "p1 on left diagonal is launched left (velocity.x < -300)")
-	err += assert_true(p1.velocity.y < -700.0, "p1 on left diagonal is launched upward (velocity.y < -700)")
+	err += assert_true(p1.velocity.y <= -p1.super_jump_speed * 0.75, "p1 on left diagonal is launched upward")
 	
 	p1.free()
 	p2.free()

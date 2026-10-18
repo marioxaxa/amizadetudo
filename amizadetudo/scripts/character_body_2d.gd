@@ -29,6 +29,8 @@ enum Polarity {
 @export var aura_radius := 60.0
 @export var magnetic_strength := 4000.0
 @export var player_magnetic_strength := 1500.0
+@export var grounded_repulsion_multiplier := 2.0
+@export var mount_follow_smoothness := 18.0
 @export var magnetic_wall_hold_time := 0.5
 @export var magnetic_wall_slide_speed := 85.0
 @export var magnetic_hover_height := 54.0
@@ -42,7 +44,7 @@ enum Polarity {
 @export var magnetic_wall_slide_acceleration := 140.0
 
 @export_group("Repulsion & Burst")
-@export var super_jump_speed := 550.0
+@export var super_jump_speed := 650.0
 @export var stacked_push_down_speed := 600.0
 @export var horizontal_burst_speed := 850.0
 @export var horizontal_burst_lift := -260.0
@@ -56,6 +58,7 @@ var joypad_id := -1
 var level_map: TileMapLayer
 var other_player: CharacterBody2D = null
 var is_glued := false
+var player_mounting_player := false
 
 # --- Timers & Input State ---
 var _coyote_timer := 0.0
@@ -78,6 +81,8 @@ var _magnetic_hover_ignore_timer := 0.0
 var _magnetic_detach_timer := 0.0
 var _magnetic_hover_time := 0.0
 var _magnetic_wall_slide_timer := 0.0
+var _default_collision_layer := 0
+var _default_collision_mask := 0
 
 # --- Visual Effects ---
 var aura_pulse := 1.0
@@ -99,6 +104,8 @@ func _ready() -> void:
 	if nameplate:
 		nameplate.text = "P%d" % player_index
 	_spawn_position = global_position
+	_default_collision_layer = collision_layer
+	_default_collision_mask = collision_mask
 	queue_redraw()
 
 
@@ -131,10 +138,13 @@ func _physics_process(delta: float) -> void:
 					break
 
 	update_glued_state()
+	_update_player_mounting_state()
 	_update_magnetic_tile_effects(delta)
+	_update_player_hover()
 	_magnetic_hover_time = _magnetic_hover_time + delta if _magnetic_hovering else 0.0
 
-	var ground_contact := is_touching_ground()
+	var world_ground_contact := is_touching_ground()
+	var ground_contact := world_ground_contact
 	if is_glued and is_instance_valid(other_player):
 		ground_contact = ground_contact or other_player.is_touching_ground()
 
@@ -172,6 +182,9 @@ func _physics_process(delta: float) -> void:
 	var target_speed := input_direction * max_speed * speed_multiplier
 	var rate := acceleration if not is_zero_approx(input_direction) else deceleration
 	velocity.x = move_toward(velocity.x, target_speed, rate * delta)
+	if player_mounting_player and is_instance_valid(other_player):
+		var mount_blend := 1.0 - exp(-mount_follow_smoothness * delta)
+		velocity.x = lerpf(velocity.x, other_player.velocity.x, mount_blend)
 
 	var jump_held := _is_jump_held()
 	if jump_held and not _jump_was_held:
@@ -204,14 +217,20 @@ func _physics_process(delta: float) -> void:
 
 	if is_instance_valid(other_player):
 		var magnet_force := calculate_magnetic_force(other_player)
-		if ground_contact and magnet_force.y < 0.0:
+		if _magnetic_hovering:
 			magnet_force.y = 0.0
+		if world_ground_contact and magnet_force.y < 0.0:
+			magnet_force.y = 0.0
+		if world_ground_contact and other_player.is_touching_ground() and polarity == other_player.polarity:
+			magnet_force.x *= grounded_repulsion_multiplier
 		velocity += magnet_force * delta
 	if _magnetic_detach_timer <= 0.0:
 		_apply_tile_attachment_force(delta)
 
 	if is_inside_tree():
 		move_and_slide()
+		_update_player_mounting_state()
+		_carry_mounted_player(delta)
 	_check_hazard()
 
 
@@ -298,6 +317,49 @@ func _update_magnetic_tile_effects(delta: float) -> void:
 		_magnetic_wall_slide_timer = 0.0
 
 
+func _update_player_hover() -> void:
+	if _magnetic_hovering or _magnetic_hover_ignore_timer > 0.0 or not is_instance_valid(other_player):
+		return
+	if polarity != other_player.polarity:
+		return
+	var offset := global_position - other_player.global_position
+	var hover_half_width := GLUE_DISTANCE * 0.5 + magnetic_hover_horizontal_margin
+	if offset.y >= -8.0 or -offset.y > magnetic_hover_activation_height or absf(offset.x) > hover_half_width:
+		return
+	_magnetic_hovering = true
+	_magnetic_hover_target = other_player.global_position + Vector2.UP * magnetic_hover_height
+
+
+func _update_player_mounting_state() -> void:
+	if not is_glued or not is_instance_valid(other_player) or global_position.y >= other_player.global_position.y:
+		_set_player_mounting_state(false)
+		return
+	var offset := global_position - other_player.global_position
+	_set_player_mounting_state(absf(offset.x) <= GLUE_DISTANCE and offset.y >= -55.0 and offset.y <= -25.0)
+
+
+func _set_player_mounting_state(is_mounting: bool) -> void:
+	if player_mounting_player == is_mounting:
+		return
+	player_mounting_player = is_mounting
+	if not is_instance_valid(other_player):
+		return
+	if is_mounting:
+		add_collision_exception_with(other_player)
+		other_player.add_collision_exception_with(self)
+	else:
+		remove_collision_exception_with(other_player)
+		other_player.remove_collision_exception_with(self)
+
+
+func _carry_mounted_player(delta: float) -> void:
+	if not is_instance_valid(other_player) or not other_player.player_mounting_player:
+		return
+	var mount_blend := 1.0 - exp(-mount_follow_smoothness * delta)
+	other_player.global_position.x = lerpf(other_player.global_position.x, global_position.x, mount_blend)
+	other_player.velocity.x = lerpf(other_player.velocity.x, velocity.x, mount_blend)
+
+
 func _apply_tile_attachment_force(delta: float) -> void:
 	if not _magnetic_tile_attached:
 		return
@@ -326,7 +388,15 @@ func die() -> void:
 	if _is_dead:
 		return
 	_is_dead = true
+	if is_instance_valid(other_player):
+		is_glued = false
+		other_player.is_glued = false
+		other_player._set_player_mounting_state(false)
+		other_player.velocity.y = maxf(other_player.velocity.y, 0.0)
+	_set_player_mounting_state(false)
 	velocity = Vector2.ZERO
+	collision_layer = 0
+	collision_mask = 0
 	visible = false
 	var save_manager := get_node_or_null("/root/SaveManager")
 	var death_count: int = save_manager.register_death(player_index) if save_manager != null else 0
@@ -334,6 +404,8 @@ func die() -> void:
 	await get_tree().create_timer(respawn_delay).timeout
 	global_position = _spawn_position
 	velocity = Vector2.ZERO
+	collision_layer = _default_collision_layer
+	collision_mask = _default_collision_mask
 	visible = true
 	_is_dead = false
 
@@ -400,6 +472,9 @@ func toggle_polarity() -> bool:
 		if polarity == other_player.polarity:
 			is_glued = false
 			other_player.is_glued = false
+			# Preserve the launch before same-polarity hover can take over.
+			_magnetic_hover_ignore_timer = magnetic_hover_burst_delay
+			other_player._magnetic_hover_ignore_timer = other_player.magnetic_hover_burst_delay
 			
 			var diff := other_player.global_position - global_position
 			var dir := Vector2.RIGHT if player_index == 1 else Vector2.LEFT
