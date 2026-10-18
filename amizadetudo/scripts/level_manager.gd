@@ -2,7 +2,9 @@ extends Node
 
 const LEVELS := [
 	"res://levels/level_01.tscn",
-	"res://levels/level_02.tscn"
+	"res://levels/level_02.tscn",
+	"res://levels/level_03.tscn",
+	"res://levels/level_04.tscn"
 ]
 
 var _is_transitioning := false

@@ -39,7 +39,7 @@ enum Polarity {
 @export var magnetic_wall_slide_acceleration := 140.0
 
 @export_group("Repulsion & Burst")
-@export var super_jump_speed := 1050.0
+@export var super_jump_speed := 550.0
 @export var stacked_push_down_speed := 600.0
 @export var horizontal_burst_speed := 850.0
 @export var horizontal_burst_lift := -260.0
