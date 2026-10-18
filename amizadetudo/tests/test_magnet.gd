@@ -488,15 +488,3 @@ func test_player_collision_shape() -> int:
 	
 	instance.free()
 	return err
-
-
-
-
-
-
-
-
-
-
-
-

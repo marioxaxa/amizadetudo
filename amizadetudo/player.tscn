@@ -7,13 +7,14 @@ points = PackedVector2Array(-15, 21, -18, -6, -8, -21, 8, -21, 18, -6, 15, 21)
 
 [node name="Player" type="CharacterBody2D" unique_id=1084935113]
 script = ExtResource("1_player")
+polarity_cooldown = 0.5
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1120530299]
 shape = SubResource("ConvexPolygonShape2D_player")
 
-[node name="Visual" type="Polygon2D" parent="."]
-polygon = PackedVector2Array(-15, 21, -18, -6, -8, -21, 8, -21, 18, -6, 15, 21)
+[node name="Visual" type="Polygon2D" parent="." unique_id=2036060987]
 color = Color(0.333, 0.839, 1, 1)
+polygon = PackedVector2Array(-15, 21, -18, -6, -8, -21, 8, -21, 18, -6, 15, 21)
 
 [node name="Nameplate" type="Label" parent="." unique_id=962411646]
 offset_left = -18.0

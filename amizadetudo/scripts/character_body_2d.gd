@@ -10,7 +10,7 @@ enum Polarity {
 @export var player_color := Color("55d6ff")
 
 @export_group("Movement")
-@export var tile_magnetic_radius := 112.0
+@export var tile_magnetic_radius := 148.0
 @export var tile_magnetic_glue_distance := 54.0
 @export var max_speed := 300.0
 @export var acceleration := 2200.0
@@ -28,12 +28,22 @@ enum Polarity {
 @export var polarity_cooldown := 1.0
 @export var aura_radius := 60.0
 @export var magnetic_strength := 4000.0
+@export var magnetic_wall_hold_time := 0.5
+@export var magnetic_wall_slide_speed := 85.0
+@export var magnetic_hover_height := 54.0
+@export var magnetic_hover_spring_strength := 55.0
+@export var magnetic_hover_damping := 12.0
+@export var magnetic_hover_burst_delay := 0.5
+@export var magnetic_hover_bob_amplitude := 4.0
+@export var magnetic_hover_bob_frequency := 1.6
+@export var magnetic_wall_slide_acceleration := 140.0
 
 @export_group("Repulsion & Burst")
 @export var super_jump_speed := 1050.0
 @export var stacked_push_down_speed := 600.0
 @export var horizontal_burst_speed := 850.0
 @export var horizontal_burst_lift := -260.0
+@export var magnetic_wall_burst_lift := -420.0
 
 # --- Constants ---
 const GLUE_DISTANCE := 38.0
@@ -57,6 +67,13 @@ var _magnetic_tile_attached := false
 var _attached_tile_field := 0
 var _attached_tile_position := Vector2.ZERO
 var _magnetic_floor_contact := false
+var _magnetic_wall_contact := false
+var _magnetic_hovering := false
+var _magnetic_wall_hold_timer := 0.0
+var _magnetic_hover_target := Vector2.ZERO
+var _magnetic_hover_ignore_timer := 0.0
+var _magnetic_hover_time := 0.0
+var _magnetic_wall_slide_timer := 0.0
 
 # --- Visual Effects ---
 var aura_pulse := 1.0
@@ -99,6 +116,7 @@ func set_controls_enabled(enabled: bool) -> void:
 func _physics_process(delta: float) -> void:
 	if _is_dead or not _controls_enabled:
 		return
+	_magnetic_hover_ignore_timer = maxf(_magnetic_hover_ignore_timer - delta, 0.0)
 	if not is_instance_valid(other_player) and is_inside_tree():
 		var parent = get_parent()
 		if parent:
@@ -109,6 +127,7 @@ func _physics_process(delta: float) -> void:
 
 	update_glued_state()
 	_update_magnetic_tile_effects(delta)
+	_magnetic_hover_time = _magnetic_hover_time + delta if _magnetic_hovering else 0.0
 
 	var ground_contact := is_touching_ground()
 	if is_glued and is_instance_valid(other_player):
@@ -118,7 +137,21 @@ func _physics_process(delta: float) -> void:
 		_coyote_timer = coyote_time
 	else:
 		_coyote_timer = maxf(_coyote_timer - delta, 0.0)
-		velocity.y += gravity * delta
+		if _magnetic_wall_contact:
+			if _magnetic_wall_hold_timer > 0.0:
+				velocity.y = 0.0
+			else:
+				var slide_speed := magnetic_wall_slide_speed
+				if _magnetic_wall_slide_timer > 1.0:
+					slide_speed += (_magnetic_wall_slide_timer - 1.0) * magnetic_wall_slide_acceleration
+				velocity.y = move_toward(velocity.y, slide_speed, gravity * 1.5 * delta)
+		elif _magnetic_hovering:
+			var bob_offset := sin(_magnetic_hover_time * TAU * magnetic_hover_bob_frequency) * magnetic_hover_bob_amplitude
+			var spring_offset := _magnetic_hover_target.y + bob_offset - global_position.y
+			var spring_acceleration := spring_offset * magnetic_hover_spring_strength - velocity.y * magnetic_hover_damping
+			velocity.y += spring_acceleration * delta
+		else:
+			velocity.y += gravity * delta
 
 	_cooldown_timer = maxf(_cooldown_timer - delta, 0.0)
 	var toggle_held := _is_toggle_held()
@@ -161,6 +194,7 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(other_player):
 		var magnet_force := calculate_magnetic_force(other_player)
 		velocity += magnet_force * delta
+	_apply_tile_attachment_force(delta)
 
 	if is_inside_tree():
 		move_and_slide()
@@ -168,8 +202,11 @@ func _physics_process(delta: float) -> void:
 
 
 func _update_magnetic_tile_effects(delta: float) -> void:
+	var was_touching_magnetic_wall := _magnetic_wall_contact
 	_magnetic_tile_attached = false
 	_magnetic_floor_contact = false
+	_magnetic_wall_contact = false
+	_magnetic_hovering = false
 	if level_map == null:
 		return
 
@@ -179,6 +216,8 @@ func _update_magnetic_tile_effects(delta: float) -> void:
 	var closest_opposite_position := Vector2.ZERO
 	var closest_opposite_field := 0
 	var same_field := polarity + 1
+	var closest_same_field_below_distance := INF
+	var closest_same_field_below_position := Vector2.ZERO
 
 	for x in range(center_cell.x - cell_radius, center_cell.x + cell_radius + 1):
 		for y in range(center_cell.y - cell_radius, center_cell.y + cell_radius + 1):
@@ -197,7 +236,15 @@ func _update_magnetic_tile_effects(delta: float) -> void:
 				distance = 0.001
 			if field == same_field and distance < tile_magnetic_radius:
 				var falloff := 1.0 - distance / tile_magnetic_radius
-				velocity += offset.normalized() * magnetic_strength * 0.45 * falloff * falloff * delta
+				var repulsion := offset.normalized() * magnetic_strength * 0.72 * falloff * falloff * delta
+				if offset.y < -8.0:
+					# The spring controls vertical hover; keep only lateral repulsion here.
+					velocity.x += repulsion.x
+					if distance < closest_same_field_below_distance:
+						closest_same_field_below_distance = distance
+						closest_same_field_below_position = tile_position
+				else:
+					velocity += repulsion
 			elif distance < closest_opposite_distance:
 				closest_opposite_distance = distance
 				closest_opposite_position = tile_position
@@ -205,6 +252,11 @@ func _update_magnetic_tile_effects(delta: float) -> void:
 
 	if closest_opposite_field == 0 or closest_opposite_distance > tile_magnetic_glue_distance:
 		_attached_tile_field = 0
+		_magnetic_hovering = closest_same_field_below_distance < INF and _magnetic_hover_ignore_timer <= 0.0
+		if _magnetic_hovering:
+			_magnetic_hover_target = closest_same_field_below_position + Vector2.UP * magnetic_hover_height
+		_magnetic_wall_hold_timer = 0.0
+		_magnetic_wall_slide_timer = 0.0
 		return
 
 	_magnetic_tile_attached = true
@@ -214,6 +266,31 @@ func _update_magnetic_tile_effects(delta: float) -> void:
 	velocity += toward_tile.normalized() * magnetic_strength * 0.32 * delta
 	# Floor magnets keep horizontal movement, but reduce it while holding the player down.
 	_magnetic_floor_contact = is_on_floor() and toward_tile.y > absf(toward_tile.x)
+	_magnetic_wall_contact = not is_on_floor() and absf(toward_tile.x) > absf(toward_tile.y)
+	if _magnetic_wall_contact:
+		if not was_touching_magnetic_wall:
+			_magnetic_wall_hold_timer = magnetic_wall_hold_time
+			_magnetic_wall_slide_timer = 0.0
+		else:
+			_magnetic_wall_hold_timer = maxf(_magnetic_wall_hold_timer - delta, 0.0)
+			if _magnetic_wall_hold_timer <= 0.0:
+				_magnetic_wall_slide_timer += delta
+	else:
+		_magnetic_wall_hold_timer = 0.0
+		_magnetic_wall_slide_timer = 0.0
+
+
+func _apply_tile_attachment_force(delta: float) -> void:
+	if not _magnetic_tile_attached:
+		return
+	var toward_tile := _attached_tile_position - global_position
+	if toward_tile.length_squared() < 0.001:
+		return
+	if _magnetic_wall_contact:
+		# Reapply attraction after movement input so an opposite wall holds the player.
+		velocity.x = move_toward(velocity.x, signf(toward_tile.x) * 760.0, magnetic_strength * 3.0 * delta)
+		if _magnetic_wall_hold_timer > 0.0:
+			velocity.y = 0.0
 
 
 func _check_hazard() -> void:
@@ -291,6 +368,7 @@ func toggle_polarity() -> bool:
 	
 	var was_glued_before := is_glued or is_in_contact_with_other()
 	var was_attached_to_tile := _magnetic_tile_attached
+	var was_attached_to_magnetic_wall := _magnetic_wall_contact
 	var attached_tile_position := _attached_tile_position
 	var attached_tile_field := _attached_tile_field
 	polarity = Polarity.SOUTH if polarity == Polarity.NORTH else Polarity.NORTH
@@ -351,9 +429,10 @@ func toggle_polarity() -> bool:
 		if burst_direction.length_squared() < 0.001:
 			burst_direction = Vector2.UP
 		velocity = burst_direction.normalized() * 850.0
-		velocity.y = minf(velocity.y, -260.0)
+		velocity.y = minf(velocity.y, magnetic_wall_burst_lift if was_attached_to_magnetic_wall else -260.0)
 		_magnetic_tile_attached = false
 		_attached_tile_field = 0
+		_magnetic_hover_ignore_timer = magnetic_hover_burst_delay
 		play_repulsion_burst_effect(burst_direction)
 	
 	queue_redraw()
