@@ -1,6 +1,7 @@
 extends Node2D
 
 const TILE_SIZE := 48
+const InputConfiguration = preload("res://scripts/input_manager.gd")
 
 @onready var player_one: CharacterBody2D = $Players/PlayerOne
 @onready var player_two: CharacterBody2D = $Players/PlayerTwo
@@ -22,8 +23,9 @@ func _ready() -> void:
 	_assign_controllers()
 	player_one.set_other_player(player_two)
 	player_two.set_other_player(player_one)
-	for level_exit in get_tree().get_nodes_in_group("level_exits"):
-		level_exit.readiness_changed.connect(_on_exit_readiness_changed)
+	if is_inside_tree():
+		for level_exit in get_tree().get_nodes_in_group("level_exits"):
+			level_exit.readiness_changed.connect(_on_exit_readiness_changed)
 	Input.joy_connection_changed.connect(_on_joy_connection_changed)
 
 
@@ -49,24 +51,7 @@ func _assign_controllers() -> void:
 
 
 func _configure_input_map() -> void:
-	_add_key_action("p1_left", KEY_A)
-	_add_key_action("p1_right", KEY_D)
-	_add_key_action("p1_jump", KEY_SPACE)
-	_add_key_action("p1_toggle_polarity", KEY_SHIFT)
-	_add_key_action("p2_left", KEY_LEFT)
-	_add_key_action("p2_right", KEY_RIGHT)
-	_add_key_action("p2_jump", KEY_UP)
-	_add_key_action("p2_toggle_polarity", KEY_ENTER)
-
-
-func _add_key_action(action: StringName, keycode: Key) -> void:
-	if not InputMap.has_action(action):
-		InputMap.add_action(action)
-	else:
-		InputMap.action_erase_events(action)
-	var event := InputEventKey.new()
-	event.physical_keycode = keycode
-	InputMap.action_add_event(action, event)
+	InputConfiguration.configure_actions()
 
 
 func _on_joy_connection_changed(_device: int, _connected: bool) -> void:
@@ -89,9 +74,17 @@ func _on_exit_readiness_changed(_player_index: int, _is_ready: bool) -> void:
 	for level_exit in exits:
 		if not level_exit.is_player_ready():
 			return
+	var ready_players := {}
+	for level_exit in exits:
+		for player_index in level_exit.get_ready_player_indices():
+			ready_players[player_index] = true
+	if ready_players.size() < 2:
+		return
 	player_one.set_controls_enabled(false)
 	player_two.set_controls_enabled(false)
-	LevelManager.advance_level()
+	var level_manager := get_node_or_null("/root/LevelManager")
+	if level_manager:
+		level_manager.advance_level()
 
 
 func _on_player_died(player_index: int, death_count: int) -> void:

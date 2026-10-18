@@ -27,6 +27,14 @@ func is_player_ready() -> bool:
 	return not _players_inside.is_empty()
 
 
+func get_ready_player_indices() -> Array[int]:
+	var player_indices: Array[int] = []
+	for player in _players_inside.values():
+		if is_instance_valid(player) and player.player_index not in player_indices:
+			player_indices.append(player.player_index)
+	return player_indices
+
+
 func _on_body_entered(body: Node2D) -> void:
 	if _accepts(body):
 		_players_inside[body.get_instance_id()] = body

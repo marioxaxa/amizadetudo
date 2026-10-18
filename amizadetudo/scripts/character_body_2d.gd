@@ -28,9 +28,12 @@ enum Polarity {
 @export var polarity_cooldown := 1.0
 @export var aura_radius := 60.0
 @export var magnetic_strength := 4000.0
+@export var player_magnetic_strength := 1500.0
 @export var magnetic_wall_hold_time := 0.5
 @export var magnetic_wall_slide_speed := 85.0
 @export var magnetic_hover_height := 54.0
+@export var magnetic_hover_activation_height := 80.0
+@export var magnetic_hover_horizontal_margin := 16.0
 @export var magnetic_hover_spring_strength := 55.0
 @export var magnetic_hover_damping := 12.0
 @export var magnetic_hover_burst_delay := 0.5
@@ -72,6 +75,7 @@ var _magnetic_hovering := false
 var _magnetic_wall_hold_timer := 0.0
 var _magnetic_hover_target := Vector2.ZERO
 var _magnetic_hover_ignore_timer := 0.0
+var _magnetic_detach_timer := 0.0
 var _magnetic_hover_time := 0.0
 var _magnetic_wall_slide_timer := 0.0
 
@@ -117,6 +121,7 @@ func _physics_process(delta: float) -> void:
 	if _is_dead or not _controls_enabled:
 		return
 	_magnetic_hover_ignore_timer = maxf(_magnetic_hover_ignore_timer - delta, 0.0)
+	_magnetic_detach_timer = maxf(_magnetic_detach_timer - delta, 0.0)
 	if not is_instance_valid(other_player) and is_inside_tree():
 		var parent = get_parent()
 		if parent:
@@ -137,6 +142,14 @@ func _physics_process(delta: float) -> void:
 		_coyote_timer = coyote_time
 	else:
 		_coyote_timer = maxf(_coyote_timer - delta, 0.0)
+
+	if _magnetic_hovering:
+		# Hover takes priority over floor contact so a hard landing is pulled back up.
+		var bob_offset := sin(_magnetic_hover_time * TAU * magnetic_hover_bob_frequency) * magnetic_hover_bob_amplitude
+		var spring_offset := _magnetic_hover_target.y + bob_offset - global_position.y
+		var spring_acceleration := spring_offset * magnetic_hover_spring_strength - velocity.y * magnetic_hover_damping
+		velocity.y += spring_acceleration * delta
+	elif not ground_contact:
 		if _magnetic_wall_contact:
 			if _magnetic_wall_hold_timer > 0.0:
 				velocity.y = 0.0
@@ -145,11 +158,6 @@ func _physics_process(delta: float) -> void:
 				if _magnetic_wall_slide_timer > 1.0:
 					slide_speed += (_magnetic_wall_slide_timer - 1.0) * magnetic_wall_slide_acceleration
 				velocity.y = move_toward(velocity.y, slide_speed, gravity * 1.5 * delta)
-		elif _magnetic_hovering:
-			var bob_offset := sin(_magnetic_hover_time * TAU * magnetic_hover_bob_frequency) * magnetic_hover_bob_amplitude
-			var spring_offset := _magnetic_hover_target.y + bob_offset - global_position.y
-			var spring_acceleration := spring_offset * magnetic_hover_spring_strength - velocity.y * magnetic_hover_damping
-			velocity.y += spring_acceleration * delta
 		else:
 			velocity.y += gravity * delta
 
@@ -172,10 +180,13 @@ func _physics_process(delta: float) -> void:
 		_jump_buffer_timer = maxf(_jump_buffer_timer - delta, 0.0)
 	_jump_was_held = jump_held
 
-	if _jump_buffer_timer > 0.0 and (ground_contact or _coyote_timer > 0.0):
+	var jumped := _jump_buffer_timer > 0.0 and (ground_contact or _coyote_timer > 0.0)
+	if jumped:
 		velocity.y = jump_velocity
 		_jump_buffer_timer = 0.0
 		_coyote_timer = 0.0
+		# Let the jump clear a magnetic surface before its holding force resumes.
+		_magnetic_detach_timer = 0.12
 		_play_jump_tween()
 		if is_glued and is_instance_valid(other_player):
 			other_player.velocity.y = jump_velocity
@@ -193,8 +204,11 @@ func _physics_process(delta: float) -> void:
 
 	if is_instance_valid(other_player):
 		var magnet_force := calculate_magnetic_force(other_player)
+		if ground_contact and magnet_force.y < 0.0:
+			magnet_force.y = 0.0
 		velocity += magnet_force * delta
-	_apply_tile_attachment_force(delta)
+	if _magnetic_detach_timer <= 0.0:
+		_apply_tile_attachment_force(delta)
 
 	if is_inside_tree():
 		move_and_slide()
@@ -207,6 +221,8 @@ func _update_magnetic_tile_effects(delta: float) -> void:
 	_magnetic_floor_contact = false
 	_magnetic_wall_contact = false
 	_magnetic_hovering = false
+	if _magnetic_detach_timer > 0.0:
+		return
 	if level_map == null:
 		return
 
@@ -237,10 +253,12 @@ func _update_magnetic_tile_effects(delta: float) -> void:
 			if field == same_field and distance < tile_magnetic_radius:
 				var falloff := 1.0 - distance / tile_magnetic_radius
 				var repulsion := offset.normalized() * magnetic_strength * 0.72 * falloff * falloff * delta
-				if offset.y < -8.0:
+				var hover_half_width := float(level_map.tile_set.tile_size.x) * 0.5 + magnetic_hover_horizontal_margin
+				var is_above_tile := offset.y < -8.0 and -offset.y <= magnetic_hover_activation_height
+				if is_above_tile:
 					# The spring controls vertical hover; keep only lateral repulsion here.
 					velocity.x += repulsion.x
-					if distance < closest_same_field_below_distance:
+					if absf(offset.x) <= hover_half_width and distance < closest_same_field_below_distance:
 						closest_same_field_below_distance = distance
 						closest_same_field_below_position = tile_position
 				else:
@@ -324,6 +342,8 @@ func _get_raw_movement_input() -> float:
 		return float(simulated_input)
 	var left_action := "p1_left" if player_index == 1 else "p2_left"
 	var right_action := "p1_right" if player_index == 1 else "p2_right"
+	if not InputMap.has_action(left_action) or not InputMap.has_action(right_action):
+		return 0.0
 	var keyboard_input := Input.get_axis(left_action, right_action)
 	var controller_input := 0.0
 	if joypad_id >= 0 and Input.get_connected_joypads().has(joypad_id):
@@ -343,6 +363,8 @@ func _is_raw_jump_held() -> bool:
 	if simulated_jump != null:
 		return bool(simulated_jump)
 	var action := "p1_jump" if player_index == 1 else "p2_jump"
+	if not InputMap.has_action(action):
+		return false
 	var controller_jump := joypad_id >= 0 and Input.get_connected_joypads().has(joypad_id) and Input.is_joy_button_pressed(joypad_id, JOY_BUTTON_A)
 	return Input.is_action_pressed(action) or controller_jump
 
@@ -462,6 +484,8 @@ func play_repulsion_burst_effect(dir: Vector2) -> void:
 
 func _is_toggle_held() -> bool:
 	var action := "p1_toggle_polarity" if player_index == 1 else "p2_toggle_polarity"
+	if not InputMap.has_action(action):
+		return false
 	var controller_toggle := joypad_id >= 0 and Input.get_connected_joypads().has(joypad_id) and (Input.is_joy_button_pressed(joypad_id, JOY_BUTTON_X) or Input.is_joy_button_pressed(joypad_id, JOY_BUTTON_B))
 	return Input.is_action_pressed(action) or controller_toggle
 
@@ -534,7 +558,7 @@ func calculate_magnetic_force(other: Node2D) -> Vector2:
 	var force_dir: Vector2 = -dir if is_repelling else dir
 	
 	var proximity := 1.0 - (dist / max_dist)
-	var magnitude := magnetic_strength * (0.35 + 0.65 * proximity)
+	var magnitude := player_magnetic_strength * (0.35 + 0.65 * proximity)
 	return force_dir * magnitude
 
 
