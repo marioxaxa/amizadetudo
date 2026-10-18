@@ -1,0 +1,20 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://node_2d.tscn" id="1_base"]
+[ext_resource type="PackedScene" path="res://scenes/level_exit.tscn" id="2_exit"]
+
+[node name="LevelTemplate" instance=ExtResource("1_base")]
+
+[node name="StartPlayerOne" type="Marker2D" parent="."]
+position = Vector2(64, 128)
+
+[node name="StartPlayerTwo" type="Marker2D" parent="."]
+position = Vector2(128, 128)
+
+[node name="ExitPlayerOne" parent="." instance=ExtResource("2_exit")]
+position = Vector2(896, 224)
+allowed_player = 1
+
+[node name="ExitPlayerTwo" parent="." instance=ExtResource("2_exit")]
+position = Vector2(960, 224)
+allowed_player = 2
