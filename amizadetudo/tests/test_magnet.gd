@@ -8,6 +8,7 @@ func _init() -> void:
 	failures += test_magnetic_force()
 	failures += test_aura_properties()
 	failures += test_scene_integration()
+	failures += test_level_exit_player_identity()
 	failures += test_glued_state_and_force_cancellation()
 	failures += test_glued_synchronized_movement()
 	failures += test_glued_repulsion_burst()
@@ -200,6 +201,29 @@ func test_scene_integration() -> int:
 		err += assert_true(p2.other_player == p1, "PlayerTwo references PlayerOne after ready")
 	
 	scene.free()
+	return err
+
+
+func test_level_exit_player_identity() -> int:
+	print("Testing level exit player identity...")
+	var exit = load("res://scripts/level_exit.gd").new()
+	var player_script = load("res://scripts/character_body_2d.gd")
+	var p1 = player_script.new()
+	var p2 = player_script.new()
+	p1.player_index = 1
+	p2.player_index = 2
+	var err := 0
+
+	exit._players_inside[p1.get_instance_id()] = p1
+	exit._players_inside[p2.get_instance_id()] = p1
+	err += assert_true(exit.get_ready_player_indices().size() == 1, "a player is counted once across exits")
+
+	exit._players_inside[p2.get_instance_id()] = p2
+	err += assert_true(exit.get_ready_player_indices().size() == 2, "two distinct players are counted")
+
+	exit.free()
+	p1.free()
+	p2.free()
 	return err
 
 

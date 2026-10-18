@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 SaveManager="*res://scripts/save_manager.gd"
 LevelManager="*res://scripts/level_manager.gd"
+InputManager="*res://scripts/input_manager.gd"
 
 [display]
 
